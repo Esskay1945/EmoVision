@@ -1,6 +1,6 @@
 # EMOVISION — Real-Time Neural Emotion Decoding
 
-🚀 **Deployed Link: https://emovisionn.netlify.app/
+🚀 Deployed Link: https://emovisionn.netlify.app/
 
 ---
 
