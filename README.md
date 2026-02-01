@@ -1,14 +1,11 @@
 # EMOVISION — Real-Time Neural Emotion Decoding
 
-🚀 **Deployed Link:**https://emovisionn.netlify.app/
+🚀 **Deployed Link: https://emovisionn.netlify.app/
 
 ---
 
 A real-time AI-powered emotion analyzer that uses your webcam to detect and classify your facial expressions. Built as a single-file web application using TensorFlow.js and face-api.js — no backend or server required.
 
-![Demo Preview](https://i.imgur.com/placeholder.png)
-
----
 
 ## How It Works
 
