@@ -1,0 +1,783 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Emotion Analyzer - Final Result</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.11.0"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@vladmandic/face-api@1.7.12/dist/face-api.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Fira+Code:wght@300;400;500;600&family=Inter:wght@300;400;600;700&display=swap');
+
+        :root {
+            --primary: #00f2fe;
+            --secondary: #4facfe;
+            --accent: #ff00c1;
+            --bg-dark: #0a0b10;
+            --glass-bg: rgba(15, 18, 25, 0.7);
+            --glass-border: rgba(0, 242, 254, 0.2);
+            --neon-shadow: 0 0 15px rgba(0, 242, 254, 0.4);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: var(--bg-dark);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px;
+            color: #e0e6ed;
+            overflow-x: hidden;
+        }
+
+        #bg-canvas {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: -1;
+            opacity: 0.15;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 40px;
+            z-index: 1;
+        }
+
+        .header h1 {
+            font-family: 'Fira Code', monospace;
+            font-size: 3em;
+            letter-spacing: -1px;
+            background: linear-gradient(90deg, var(--primary), var(--secondary));
+            background-clip: text;
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            text-shadow: none;
+            margin-bottom: 5px;
+        }
+
+        .header p {
+            font-family: 'Fira Code', monospace;
+            font-size: 14px;
+            color: var(--primary);
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            opacity: 0.8;
+        }
+
+        .container {
+            background: var(--glass-bg);
+            backdrop-filter: blur(20px);
+            border: 1px solid var(--glass-border);
+            border-radius: 24px;
+            padding: 40px;
+            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5), var(--neon-shadow);
+            max-width: 900px;
+            width: 100%;
+            z-index: 1;
+        }
+
+        .video-container {
+            position: relative;
+            width: 100%;
+            max-width: 640px;
+            margin: 0 auto 30px;
+            border-radius: 20px;
+            overflow: hidden;
+            border: 2px solid var(--glass-border);
+            box-shadow: 0 0 30px rgba(0, 0, 0, 0.5);
+        }
+
+        /* Scanning Line Effect */
+        .video-container::after {
+            content: "";
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 4px;
+            background: var(--primary);
+            box-shadow: 0 0 20px var(--primary);
+            opacity: 0.5;
+            animation: scan 3s linear infinite;
+            pointer-events: none;
+            z-index: 5;
+        }
+
+        @keyframes scan {
+            0% {
+                top: 0;
+            }
+
+            100% {
+                top: 100%;
+            }
+        }
+
+        #video {
+            width: 100%;
+            display: block;
+            transform: scaleX(-1);
+            filter: contrast(1.1) brightness(1.1);
+        }
+
+        #canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            transform: scaleX(-1);
+            z-index: 2;
+        }
+
+        .face-detected-indicator {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            padding: 8px 16px;
+            background: rgba(0, 0, 0, 0.8);
+            border: 1px solid #00ff00;
+            box-shadow: 0 0 10px rgba(0, 255, 0, 0.3);
+            border-radius: 8px;
+            font-family: 'Fira Code', monospace;
+            font-weight: 600;
+            font-size: 12px;
+            color: #00ff00;
+            display: none;
+            z-index: 10;
+        }
+
+        .face-detected-indicator.active {
+            display: block;
+        }
+
+        .face-detected-indicator.no-face {
+            color: #ff3e3e;
+            border-color: #ff3e3e;
+            box-shadow: 0 0 10px rgba(255, 62, 62, 0.3);
+        }
+
+        .progress-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(10, 11, 16, 0.9);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            flex-direction: column;
+            z-index: 20;
+        }
+
+        .progress-overlay.active {
+            display: flex;
+        }
+
+        .countdown {
+            font-family: 'Fira Code', monospace;
+            font-size: 6em;
+            font-weight: 700;
+            color: var(--primary);
+            text-shadow: 0 0 30px var(--primary);
+            margin-bottom: 20px;
+        }
+
+        .progress-bar-container {
+            width: 70%;
+            height: 8px;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 4px;
+            overflow: hidden;
+            margin-top: 30px;
+        }
+
+        .progress-bar {
+            height: 100%;
+            background: var(--primary);
+            box-shadow: 0 0 15px var(--primary);
+            width: 0%;
+            transition: width 0.1s linear;
+        }
+
+        .controls {
+            display: flex;
+            justify-content: center;
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+
+        button {
+            padding: 16px 32px;
+            font-family: 'Fira Code', monospace;
+            font-size: 14px;
+            border-radius: 12px;
+            cursor: pointer;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        #analyzeBtn {
+            background: var(--primary);
+            color: var(--bg-dark);
+            border: none;
+            box-shadow: 0 10px 20px rgba(0, 242, 254, 0.3);
+        }
+
+        #analyzeBtn:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 15px 30px rgba(0, 242, 254, 0.5);
+            background: white;
+        }
+
+        button:disabled {
+            filter: grayscale(1);
+            opacity: 0.3;
+            transform: none !important;
+        }
+
+        .result-container {
+            display: none;
+            text-align: center;
+            animation: fadeIn 0.8s ease forwards;
+        }
+
+        .result-container.active {
+            display: block;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .result-emoji {
+            font-size: 120px;
+            margin-bottom: 20px;
+            filter: drop-shadow(0 0 20px rgba(255, 255, 255, 0.2));
+        }
+
+        .result-emotion {
+            font-family: 'Fira Code', monospace;
+            font-size: 3.5em;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: -2px;
+            margin-bottom: 10px;
+            color: var(--primary);
+        }
+
+        .result-confidence {
+            font-family: 'Fira Code', monospace;
+            font-size: 14px;
+            color: var(--secondary);
+            opacity: 0.8;
+            margin-bottom: 30px;
+        }
+
+        .result-description {
+            font-size: 1.1em;
+            line-height: 1.6;
+            margin-bottom: 40px;
+            color: #a0aec0;
+            max-width: 600px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+
+        .emotion-breakdown {
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 16px;
+            padding: 24px;
+            margin-top: 40px;
+        }
+
+        .emotion-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px 16px;
+            margin: 8px 0;
+            background: rgba(255, 255, 255, 0.02);
+            border-radius: 8px;
+            font-family: 'Fira Code', monospace;
+            font-size: 13px;
+            transition: background 0.3s;
+        }
+
+        .emotion-item:hover {
+            background: rgba(255, 255, 255, 0.05);
+        }
+
+        .retry-btn {
+            background: transparent;
+            color: #fff;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            margin-top: 30px;
+        }
+
+        .retry-btn:hover {
+            border-color: var(--primary);
+            color: var(--primary);
+        }
+
+        .status {
+            font-family: 'Fira Code', monospace;
+            font-size: 12px;
+            color: var(--primary);
+            opacity: 0.6;
+            margin-top: 30px;
+            text-align: center;
+        }
+
+        .instructions {
+            background: rgba(0, 242, 254, 0.03);
+            border: 1px dotted var(--glass-border);
+            border-radius: 16px;
+            padding: 24px;
+            margin-bottom: 30px;
+        }
+
+        .instructions h3 {
+            font-family: 'Fira Code', monospace;
+            font-size: 16px;
+            color: var(--primary);
+            margin-bottom: 15px;
+            text-transform: uppercase;
+        }
+
+        .instructions li {
+            font-size: 14px;
+            color: #a0aec0;
+            padding: 6px 0;
+        }
+
+        .instructions li:before {
+            content: ">";
+            color: var(--primary);
+            margin-right: 12px;
+        }
+
+        .loading .spinner {
+            border: 3px solid rgba(0, 242, 254, 0.1);
+            border-top: 3px solid var(--primary);
+            width: 50px;
+            height: 50px;
+            margin-bottom: 20px;
+        }
+
+        #framesAnalyzed {
+            font-family: 'Fira Code', monospace;
+            color: var(--secondary);
+            margin-top: 10px;
+        }
+    </style>
+</head>
+
+<body>
+    <canvas id="bg-canvas"></canvas>
+    <div class="header">
+        <h1>EMOVISION</h1>
+        <p>// Real-time neural emotion decoding</p>
+    </div>
+
+    <div class="container">
+        <div class="loading active" id="loading">
+            <div class="spinner"></div>
+            <p>Loading AI models... Please wait</p>
+        </div>
+
+        <div class="instructions" id="instructions" style="display: none;">
+            <h3>📋 Instructions:</h3>
+            <ul>
+                <li>Position your face in the camera frame</li>
+                <li>Make sure you have good lighting</li>
+                <li>Look directly at the camera</li>
+                <li>Wait for the green "Face Detected" indicator</li>
+                <li>Click "Analyze My Emotion" button</li>
+                <li>Stay still for 10 seconds during analysis</li>
+            </ul>
+        </div>
+
+        <div class="video-container" style="display: none;" id="videoContainer">
+            <video id="video" autoplay playsinline></video>
+            <canvas id="canvas"></canvas>
+            <div class="face-detected-indicator" id="faceIndicator">SYSTEM_ERROR: NO_FACE_DETECTED</div>
+            <div class="progress-overlay" id="progressOverlay">
+                <div class="countdown" id="countdown">10</div>
+                <p style="font-size: 1.5em;">Analyzing your emotions...</p>
+                <p class="frames-analyzed" id="framesAnalyzed">Frames analyzed: 0</p>
+                <div class="progress-bar-container">
+                    <div class="progress-bar" id="progressBar"></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="controls" id="controls" style="display: none;">
+            <button id="analyzeBtn">🔍 Analyze My Emotion (10s)</button>
+        </div>
+
+        <div class="result-container" id="resultContainer">
+            <div class="result-emoji" id="resultEmoji">😊</div>
+            <div class="result-emotion" id="resultEmotion">Happy</div>
+            <div class="result-confidence" id="resultConfidence">Confidence: 95.5%</div>
+            <div class="result-description" id="resultDescription"></div>
+
+            <div class="emotion-breakdown">
+                <h3>Detailed Emotion Breakdown:</h3>
+                <div id="emotionBreakdown"></div>
+            </div>
+
+            <button class="retry-btn" id="retryBtn">🔄 Analyze Again</button>
+        </div>
+
+        <div class="status" id="status">Initializing...</div>
+    </div>
+
+    <script>
+        const video = document.getElementById('video');
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const analyzeBtn = document.getElementById('analyzeBtn');
+        const retryBtn = document.getElementById('retryBtn');
+        const status = document.getElementById('status');
+        const loading = document.getElementById('loading');
+        const instructions = document.getElementById('instructions');
+        const videoContainer = document.getElementById('videoContainer');
+        const controls = document.getElementById('controls');
+        const resultContainer = document.getElementById('resultContainer');
+        const progressOverlay = document.getElementById('progressOverlay');
+        const countdown = document.getElementById('countdown');
+        const progressBar = document.getElementById('progressBar');
+        const faceIndicator = document.getElementById('faceIndicator');
+        const framesAnalyzed = document.getElementById('framesAnalyzed');
+
+        let faceDetectionModel;
+        let stream;
+        let isAnalyzing = false;
+        let emotionData = [];
+        let detectionLoop;
+        let lastFaceDetected = false;
+
+        const emotions = ['Angry', 'Disgust', 'Fear', 'Happy', 'Sad', 'Surprise', 'Neutral'];
+
+        const emotionDescriptions = {
+            'angry': 'You appear to be feeling frustrated or upset. Take a deep breath and try to relax.',
+            'disgusted': 'You seem to be experiencing disgust or discomfort with something.',
+            'fearful': 'You appear anxious or worried. Remember to take things one step at a time.',
+            'happy': 'You look cheerful and content! Keep spreading those positive vibes!',
+            'sad': 'You seem to be feeling down. Remember, it\'s okay to feel sad sometimes.',
+            'surprised': 'You appear surprised or amazed by something unexpected!',
+            'neutral': 'You have a calm and neutral expression. You seem relaxed and composed.'
+        };
+
+        const emotionEmojis = {
+            'angry': '😠',
+            'disgusted': '🤢',
+            'fearful': '😨',
+            'happy': '😊',
+            'sad': '😢',
+            'surprised': '😲',
+            'neutral': '😐'
+        };
+
+        // Face-api options
+        const faceApiOptions = new faceapi.TinyFaceDetectorOptions({ inputSize: 160, scoreThreshold: 0.5 });
+
+        // Continuous face detection
+        async function continuousFaceDetection() {
+            if (!video.videoWidth) return;
+
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            try {
+                const detection = await faceapi.detectSingleFace(video, faceApiOptions)
+                    .withFaceExpressions();
+
+                if (detection) {
+                    lastFaceDetected = true;
+                    faceIndicator.textContent = '✓ Face Detected';
+                    faceIndicator.classList.add('active');
+                    faceIndicator.classList.remove('no-face');
+                    analyzeBtn.disabled = false;
+
+                    // Draw face box
+                    const box = detection.detection.box;
+                    ctx.strokeStyle = '#00ff00';
+                    ctx.lineWidth = 3;
+                    ctx.strokeRect(box.x, box.y, box.width, box.height);
+                } else {
+                    lastFaceDetected = false;
+                    faceIndicator.textContent = '⚠️ No Face Detected';
+                    faceIndicator.classList.add('active');
+                    faceIndicator.classList.add('no-face');
+                    analyzeBtn.disabled = true;
+                }
+            } catch (error) {
+                console.error('Detection error:', error);
+            }
+
+            if (!isAnalyzing) {
+                detectionLoop = requestAnimationFrame(continuousFaceDetection);
+            }
+        }
+
+        // Initialize models
+        async function loadModels() {
+            try {
+                status.textContent = 'Loading AI models... (approx. 5-10MB)';
+                const MODEL_URL = 'https://cdn.jsdelivr.net/npm/@vladmandic/face-api/model/';
+
+                await Promise.all([
+                    faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
+                    faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL),
+                    faceapi.nets.faceExpressionNet.loadFromUri(MODEL_URL)
+                ]);
+
+                loading.classList.remove('active');
+                instructions.style.display = 'block';
+                await startCamera();
+            } catch (error) {
+                status.textContent = 'Error loading models: ' + error.message;
+                console.error(error);
+            }
+        }
+
+        // Start camera
+        async function startCamera() {
+            try {
+                stream = await navigator.mediaDevices.getUserMedia({
+                    video: {
+                        facingMode: 'user',
+                        width: { ideal: 640 },
+                        height: { ideal: 480 }
+                    }
+                });
+                video.srcObject = stream;
+
+                video.onloadedmetadata = () => {
+                    canvas.width = video.videoWidth;
+                    canvas.height = video.videoHeight;
+                    videoContainer.style.display = 'block';
+                    controls.style.display = 'flex';
+                    status.textContent = '✓ Camera ready! Position your face and wait for green indicator';
+
+                    // Start continuous detection
+                    setTimeout(() => {
+                        continuousFaceDetection();
+                    }, 1000);
+                };
+            } catch (error) {
+                status.textContent = 'Camera access denied. Please allow camera access and refresh.';
+                console.error(error);
+            }
+        }
+
+        // Analyze for 10 seconds
+        async function startAnalysis() {
+            if (!lastFaceDetected) {
+                alert('Please position your face in the frame first!');
+                return;
+            }
+
+            isAnalyzing = true;
+            emotionData = [];
+            analyzeBtn.disabled = true;
+            resultContainer.classList.remove('active');
+            progressOverlay.classList.add('active');
+            status.textContent = '🔍 Analyzing... Please stay still and look at the camera';
+            faceIndicator.style.display = 'none';
+
+            let secondsLeft = 10;
+            const startTime = Date.now();
+            const analyzeInterval = 200; // Analyze every 200ms for better performance
+
+            const analysisLoop = setInterval(async () => {
+                const elapsed = Date.now() - startTime;
+                const progress = Math.min((elapsed / 10000) * 100, 100);
+                progressBar.style.width = progress + '%';
+
+                secondsLeft = Math.ceil((10000 - elapsed) / 1000);
+                countdown.textContent = secondsLeft;
+                framesAnalyzed.textContent = `Frames analyzed: ${emotionData.length}`;
+
+                try {
+                    const detection = await faceapi.detectSingleFace(video, faceApiOptions)
+                        .withFaceExpressions();
+
+                    if (detection) {
+                        // Store the expression scores
+                        const expressions = detection.expressions;
+                        const scores = {};
+                        for (const [expr, val] of Object.entries(expressions)) {
+                            scores[expr] = val * 100;
+                        }
+                        emotionData.push(scores);
+
+                        // Draw face box
+                        ctx.clearRect(0, 0, canvas.width, canvas.height);
+                        const box = detection.detection.box;
+                        ctx.strokeStyle = '#00ff00';
+                        ctx.lineWidth = 3;
+                        ctx.strokeRect(box.x, box.y, box.width, box.height);
+                    }
+                } catch (error) {
+                    console.error('Analysis error:', error);
+                }
+
+                if (elapsed >= 10000) {
+                    clearInterval(analysisLoop);
+                    finishAnalysis();
+                }
+            }, analyzeInterval);
+        }
+
+        // Calculate final result
+        function finishAnalysis() {
+            progressOverlay.classList.remove('active');
+            faceIndicator.style.display = 'block';
+
+            if (emotionData.length < 10) {
+                status.textContent = '❌ Not enough data. Please try again and keep your face visible.';
+                analyzeBtn.disabled = false;
+                isAnalyzing = false;
+                continuousFaceDetection();
+                return;
+            }
+
+            // Average all emotion scores
+            const avgEmotions = {
+                'neutral': 0,
+                'happy': 0,
+                'sad': 0,
+                'angry': 0,
+                'fearful': 0,
+                'disgusted': 0,
+                'surprised': 0
+            };
+
+            emotionData.forEach(frame => {
+                for (let emotion in frame) {
+                    avgEmotions[emotion] += frame[emotion];
+                }
+            });
+
+            for (let emotion in avgEmotions) {
+                avgEmotions[emotion] /= emotionData.length;
+            }
+
+            // Find dominant emotion
+            let dominantEmotion = 'neutral';
+            let maxScore = 0;
+            for (let emotion in avgEmotions) {
+                if (avgEmotions[emotion] > maxScore) {
+                    maxScore = avgEmotions[emotion];
+                    dominantEmotion = emotion;
+                }
+            }
+
+            displayResult(dominantEmotion, maxScore, avgEmotions);
+        }
+
+        // Display final result
+        function displayResult(emotion, confidence, allEmotions) {
+            document.getElementById('resultEmoji').textContent = emotionEmojis[emotion];
+            document.getElementById('resultEmotion').textContent = emotion;
+            document.getElementById('resultConfidence').textContent =
+                `Confidence: ${confidence.toFixed(1)}% (Based on ${emotionData.length} frames)`;
+            document.getElementById('resultDescription').textContent =
+                emotionDescriptions[emotion];
+
+            // Sort and display all emotions
+            const sorted = Object.entries(allEmotions)
+                .sort((a, b) => b[1] - a[1]);
+
+            const breakdownHTML = sorted.map(([em, score]) => `
+                <div class="emotion-item">
+                    <span>${emotionEmojis[em]} ${em}</span>
+                    <span>${score.toFixed(1)}%</span>
+                </div>
+            `).join('');
+
+            document.getElementById('emotionBreakdown').innerHTML = breakdownHTML;
+
+            videoContainer.style.display = 'none';
+            controls.style.display = 'none';
+            resultContainer.classList.add('active');
+            status.textContent = '✅ Analysis Complete!';
+            isAnalyzing = false;
+        }
+
+        // Event listeners
+        analyzeBtn.addEventListener('click', startAnalysis);
+
+        retryBtn.addEventListener('click', () => {
+            resultContainer.classList.remove('active');
+            videoContainer.style.display = 'block';
+            controls.style.display = 'flex';
+            status.textContent = '✓ Ready! Position your face and wait for green indicator';
+            continuousFaceDetection();
+        });
+
+        // Matrix Background Effect
+        const bgCanvas = document.getElementById('bg-canvas');
+        const bgCtx = bgCanvas.getContext('2d');
+
+        let width, height, columns;
+        const fontSize = 16;
+        const chars = "01010101011101010101010101010101000101010101010101010101001010101010101010101010101";
+        let drops = [];
+
+        function initBg() {
+            width = bgCanvas.width = window.innerWidth;
+            height = bgCanvas.height = window.innerHeight;
+            columns = Math.floor(width / fontSize);
+            drops = new Array(columns).fill(1);
+        }
+
+        function drawBg() {
+            bgCtx.fillStyle = "rgba(10, 11, 16, 0.1)";
+            bgCtx.fillRect(0, 0, width, height);
+            bgCtx.fillStyle = "#00f2fe";
+            bgCtx.font = fontSize + "px 'Fira Code'";
+
+            for (let i = 0; i < drops.length; i++) {
+                const text = chars[Math.floor(Math.random() * chars.length)];
+                bgCtx.fillText(text, i * fontSize, drops[i] * fontSize);
+                if (drops[i] * fontSize > height && Math.random() > 0.975) drops[i] = 0;
+                drops[i]++;
+            }
+        }
+
+        window.addEventListener('resize', initBg);
+        initBg();
+        setInterval(drawBg, 50);
+
+        // Load models on page load
+        loadModels();
+    </script>
+</body>
+
+</html>
